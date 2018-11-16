@@ -1,0 +1,79 @@
+node {
+    // Get Artifactory server instance, defined in the Artifactory Plugin administration page.
+    def server = Artifactory.server "artifactory"
+    // Create an Artifactory Maven instance.
+    def rtMaven = Artifactory.newMavenBuild()
+    def buildInfo
+    //rtMaven.tool = maven
+
+    stage('Get Code from GitHub') {
+        git url: 'https://github.com/reddi-devops/hello-world-war.git'
+    }
+
+    stage('Compile and Build Application') {
+         rtMaven.tool = "maven"
+
+       buildInfo = rtMaven.run pom: 'pom.xml', goals: 'clean package'
+    }
+    
+    //stage('Artifactory configuration') {
+    // Tool name from Jenkins configuration
+      //rtMaven.tool = "maven"
+     // Set Artifactory repositories for dependencies resolution and artifacts deployment.
+     //rtMaven.deployer releaseRepo:'libs-release-local', snapshotRepo:'libs-snapshot-local', server: server
+         //}
+
+    
+    stage ('Deploy to Artifactory') {
+         rtMaven.deployer releaseRepo:'libs-release-local', snapshotRepo:'libs-snapshot-local', server: server
+        rtMaven.deployer.deployArtifacts buildInfo
+    }
+    
+    stage('Publish build information') {
+        server.publishBuildInfo buildInfo
+    }
+    
+    stage('Backup and Remove from Tomcat') {
+        sh '''
+        for CATALINA_HOME in /tomcat/Dev/Tomcat1 /tomcat/Dev/Tomcat2
+        do
+        CATALINA_HOME=$CATALINA_HOME
+        cp -rp $CATALINA_HOME/webapps/hello* /softwares/
+        
+        rm -rf $CATALINA_HOME/webapps/hello*
+        done
+    '''     
+              
+    
+        
+    }
+    stage('Deploy in Tomcats'){
+        sh '''
+        for CATALINA_HOME in /tomcat/Dev/Tomcat1 /tomcat/Dev/Tomcat2
+        do
+        CATALINA_HOME=$CATALINA_HOME
+        pwd
+        ls -ltr
+        cp -rp target/*.war  $CATALINA_HOME/webapps/
+        
+        done
+        '''
+        
+    }
+    stage('Restart Tomcat')
+    {
+        sh '''
+        /var/apps/jenkins/scripts/tomcat.sh status
+        /var/apps/jenkins/scripts/tomcat.sh stop
+        sleep 10
+         /var/apps/jenkins/scripts/tomcat.sh status
+         sleep 10
+          /var/apps/jenkins/scripts/tomcat.sh start
+          sleep 5 
+           /var/apps/jenkins/scripts/tomcat.sh status
+        
+        '''
+    }
+    
+    
+}
